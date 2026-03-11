@@ -1,0 +1,8 @@
+flask
+flask-cors
+PyPDF2
+Pillow==11.1.0
+python-docx
+reportlab
+Werkzeug
+pdf2image
