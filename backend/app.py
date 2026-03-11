@@ -19,7 +19,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 import io
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=["https://pdf-studio-tau.vercel.app"])
 
 UPLOAD_FOLDER = '/tmp/pdf_studio_uploads'
 OUTPUT_FOLDER = '/tmp/pdf_studio_outputs'
