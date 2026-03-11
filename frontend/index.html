@@ -864,7 +864,14 @@
       cd.ondragover = e => { e.preventDefault(); cd.classList.add('drag-over'); };
       cd.ondragleave = () => cd.classList.remove('drag-over');
       cd.ondrop = e => { e.preventDefault(); cd.classList.remove('drag-over'); handleConvertFile(e.dataTransfer.files[0]); };
-      document.getElementById('convert-input').onchange = e => handleConvertFile(e.target.files[0]);
+      document.getElementById('convert-input').onchange = e => {
+        const files = Array.from(e.target.files);
+        if (files.length > 1 && ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(files[0].name.split('.').pop().toLowerCase())) {
+          handleMultipleImages(files);
+        } else {
+          handleConvertFile(files[0]);
+        }
+      };
 
       // Edit single drag/drop
       const ed = document.getElementById('edit-single-drop');
@@ -899,6 +906,34 @@
         d.onclick = () => pickConvertOp(op);
         grid.appendChild(d);
       });
+    }
+    // ----Multihandalar ----
+    async function handleMultipleImages(files) {
+      for (const file of files) {
+        if (!['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(file.name.split('.').pop().toLowerCase())) {
+          showError('Please select image files only (JPG, PNG)'); return;
+        }
+        if (file.size > 50 * 1024 * 1024) { showError('File too large: ' + file.name); return; }
+      }
+      hideError(); hideResult();
+      showProgress('Uploading ' + files.length + ' images...', 'Please wait');
+      animateProg(10, 65, 900);
+
+      const fd = new FormData();
+      files.forEach(f => fd.append('files', f));
+
+      try {
+        const r = await fetch(`${API}/convert/multiple-images`, { method: 'POST', body: fd });
+        const d = await r.json();
+        animateProg(65, 100, 400);
+        setTimeout(() => {
+          hideProgress();
+          d.error ? showError(d.error) : showResult(d.output_filename);
+        }, 400);
+      } catch (e) {
+        hideProgress();
+        showError('Upload failed. Please try again.');
+      }
     }
 
     // ---- HANDLE CONVERT FILE ----

@@ -145,6 +145,32 @@ def convert_file():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+@app.route('/api/convert/multiple-images', methods=['POST'])
+def convert_multiple_images():
+    files = request.files.getlist('files')
+    if not files:
+        return jsonify({'error': 'No files provided'}), 400
+
+    output_path = os.path.join(OUTPUT_FOLDER, f"combined_{uuid.uuid4().hex[:8]}.pdf")
+
+    try:
+        images = []
+        for f in files:
+            img = Image.open(f).convert('RGB')
+            images.append(img)
+
+        if images:
+            images[0].save(output_path, save_all=True, append_images=images[1:])
+
+        schedule_delete(output_path, 300)
+        return jsonify({
+            'success': True,
+            'output_filename': os.path.basename(output_path),
+            'download_url': f'/api/download/{os.path.basename(output_path)}'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500    
 
 def _images_to_pdf(image_paths, original_filename):
     base = os.path.splitext(original_filename)[0]
