@@ -432,18 +432,15 @@ def compress_pdf():
         if not upload_path or not os.path.exists(upload_path):
             return jsonify({'error': 'File not found'}), 400
 
-        reader = PdfReader(upload_path)
-        writer = PdfWriter()
+        # Fix: Use PyPDF2.PdfReader instead of PdfReader
+        with open(upload_path, 'rb') as f:
+            reader = PyPDF2.PdfReader(f)
+            writer = PyPDF2.PdfWriter()
 
-        for page in reader.pages:
-            # Remove images if low quality selected
-            if quality == 'low':
+            for page in reader.pages:
+                # Compress content streams
                 page.compress_content_streams()
-            writer.add_page(page)
-
-        # Set compression
-        for page in writer.pages:
-            page.compress_content_streams()
+                writer.add_page(page)
 
         output_filename = f"compressed_{uuid.uuid4().hex[:8]}.pdf"
         output_path = os.path.join(OUTPUT_FOLDER, output_filename)
@@ -453,7 +450,7 @@ def compress_pdf():
 
         original_size = os.path.getsize(upload_path)
         compressed_size = os.path.getsize(output_path)
-        saved = round((1 - compressed_size/original_size) * 100)
+        saved = max(0, round((1 - compressed_size/original_size) * 100))
 
         schedule_delete(output_path, 300)
         return jsonify({
@@ -461,10 +458,11 @@ def compress_pdf():
             'output_filename': output_filename,
             'original_size': original_size,
             'compressed_size': compressed_size,
-            'saved_percent': saved
+            'saved_percent': saved,
+            'download_url': f'/api/download/{output_filename}'
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500    
+        return jsonify({'error': str(e)}), 500 
 
 @app.route('/api/download/<filename>', methods=['GET'])
 def download_file(filename):
