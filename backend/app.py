@@ -425,6 +425,9 @@ def add_text_to_pdf():
 def compress_pdf():
     try:
         import pikepdf
+        from PIL import Image as PILImage
+        import io
+
         data = request.get_json()
         upload_path = data.get('upload_path')
         quality = data.get('quality', 'medium')
@@ -435,7 +438,40 @@ def compress_pdf():
         output_filename = f"compressed_{uuid.uuid4().hex[:8]}.pdf"
         output_path = os.path.join(OUTPUT_FOLDER, output_filename)
 
+        # Quality = image compression level
+        img_quality = {'low': 30, 'medium': 60, 'high': 85}.get(quality, 60)
+        max_dpi = {'low': 72, 'medium': 120, 'high': 150}.get(quality, 120)
+
         with pikepdf.open(upload_path) as pdf:
+            for page in pdf.pages:
+                if '/Resources' not in page:
+                    continue
+                resources = page['/Resources']
+                if '/XObject' not in resources:
+                    continue
+                xobjects = resources['/XObject']
+                for key in list(xobjects.keys()):
+                    xobj = xobjects[key]
+                    if xobj.get('/Subtype') == '/Image':
+                        try:
+                            raw = xobj.read_raw_bytes()
+                            img = PILImage.open(io.BytesIO(raw)).convert('RGB')
+                            w, h = img.size
+                            scale = min(1.0, max_dpi / max(72, w/8.27, h/11.69))
+                            if scale < 1.0:
+                                img = img.resize(
+                                    (int(w*scale), int(h*scale)),
+                                    PILImage.LANCZOS
+                                )
+                            buf = io.BytesIO()
+                            img.save(buf, format='JPEG', quality=img_quality, optimize=True)
+                            buf.seek(0)
+                            xobj.write(buf.read(), filter=pikepdf.Name('/DCTDecode'))
+                            xobj['/ColorSpace'] = pikepdf.Name('/DeviceRGB')
+                            xobj['/BitsPerComponent'] = 8
+                        except:
+                            pass
+
             pdf.save(
                 output_path,
                 compress_streams=True,
@@ -458,7 +494,7 @@ def compress_pdf():
         })
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500    
+        return jsonify({'error': str(e)}), 500  
 
 
 @app.route('/api/download/<filename>', methods=['GET'])
