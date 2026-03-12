@@ -1080,6 +1080,7 @@
       { id: 'jpg_to_pdf', emoji: '🖼️', name: 'Image → PDF', desc: 'JPG/PNG to PDF', accepts: ['jpg', 'jpeg', 'png', 'gif', 'webp'] },
       { id: 'pdf_to_jpg', emoji: '📸', name: 'PDF → Images', desc: 'Pages to JPG (zip)', accepts: ['pdf'] },
       { id: 'txt_to_pdf', emoji: '📃', name: 'Text → PDF', desc: 'Plain text to PDF', accepts: ['txt'] },
+      { id: 'compress_pdf', emoji: '🗜️', name: 'Compress PDF', desc: 'Reduce file size', accepts: ['pdf'] },
     ];
 
     (function init() {
@@ -1180,6 +1181,7 @@
       const btn = document.getElementById('convert-go-btn');
       btn.disabled = false;
       btn.textContent = '🚀 ' + op.name;
+      btn.onclick = op.id === 'compress_pdf' ? doCompress : doConvert;
     }
 
     async function doConvert() {
@@ -1196,6 +1198,32 @@
         animateProg(85, 100, 300);
         setTimeout(() => { hideProgress(); d.error ? showError(d.error) : showResult(d.output_filename); }, 400);
       } catch (e) { hideProgress(); showError('Conversion failed. Please try again.'); }
+    }
+
+    async function doCompress() {
+      if (!convertUploadInfo) return;
+      hideError(); hideResult();
+      showProgress('Compressing PDF...', 'Reducing file size...');
+      animateProg(5, 85, 2000);
+      try {
+        const r = await fetch(`${API}/compress`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            upload_path: convertUploadInfo.upload_path,
+            quality: 'medium'
+          })
+        });
+        const d = await r.json();
+        animateProg(85, 100, 300);
+        setTimeout(() => {
+          hideProgress();
+          if (d.error) { showError(d.error); return; }
+          showResult(d.output_filename);
+          // Show saved size info
+          document.getElementById('result-filename').textContent =
+            `Saved ${d.saved_percent}% — ${(d.compressed_size / 1048576).toFixed(1)}MB`;
+        }, 400);
+      } catch (e) { hideProgress(); showError('Compression failed. Please try again.'); }
     }
 
     function selectEditOp(op) {

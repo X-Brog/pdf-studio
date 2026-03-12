@@ -421,6 +421,50 @@ def add_text_to_pdf():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+@app.route('/api/compress', methods=['POST'])
+def compress_pdf():
+    try:
+        data = request.get_json()
+        upload_path = data.get('upload_path')
+        quality = data.get('quality', 'medium')  # low, medium, high
+        
+        if not upload_path or not os.path.exists(upload_path):
+            return jsonify({'error': 'File not found'}), 400
+
+        reader = PdfReader(upload_path)
+        writer = PdfWriter()
+
+        for page in reader.pages:
+            # Remove images if low quality selected
+            if quality == 'low':
+                page.compress_content_streams()
+            writer.add_page(page)
+
+        # Set compression
+        for page in writer.pages:
+            page.compress_content_streams()
+
+        output_filename = f"compressed_{uuid.uuid4().hex[:8]}.pdf"
+        output_path = os.path.join(OUTPUT_FOLDER, output_filename)
+
+        with open(output_path, 'wb') as f:
+            writer.write(f)
+
+        original_size = os.path.getsize(upload_path)
+        compressed_size = os.path.getsize(output_path)
+        saved = round((1 - compressed_size/original_size) * 100)
+
+        schedule_delete(output_path, 300)
+        return jsonify({
+            'success': True,
+            'output_filename': output_filename,
+            'original_size': original_size,
+            'compressed_size': compressed_size,
+            'saved_percent': saved
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500    
 
 @app.route('/api/download/<filename>', methods=['GET'])
 def download_file(filename):
