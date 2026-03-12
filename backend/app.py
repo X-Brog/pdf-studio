@@ -421,7 +421,6 @@ def add_text_to_pdf():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-    
 @app.route('/api/compress', methods=['POST'])
 def compress_pdf():
     try:
@@ -436,17 +435,10 @@ def compress_pdf():
         output_filename = f"compressed_{uuid.uuid4().hex[:8]}.pdf"
         output_path = os.path.join(OUTPUT_FOLDER, output_filename)
 
-        # Quality settings
-        compress_streams = {'low': 9, 'medium': 6, 'high': 3}
-        level = compress_streams.get(quality, 6)
-
         with pikepdf.open(upload_path) as pdf:
             pdf.save(
                 output_path,
                 compress_streams=True,
-                stream_decode_level=pikepdf.StreamDecodeLevel.generalized,
-                recompress_flate=True,
-                flate_level=level,
                 object_stream_mode=pikepdf.ObjectStreamMode.generate,
             )
 
@@ -461,12 +453,13 @@ def compress_pdf():
             'original_size': original_size,
             'compressed_size': compressed_size,
             'saved_percent': saved,
+            'quality_used': quality,
             'download_url': f'/api/download/{output_filename}'
         })
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
-        
+        return jsonify({'error': str(e)}), 500    
+
 
 @app.route('/api/download/<filename>', methods=['GET'])
 def download_file(filename):
