@@ -6,3 +6,4 @@ python-docx
 reportlab
 Werkzeug
 pdf2image
+pikepdf

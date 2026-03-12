@@ -425,10 +425,11 @@ def add_text_to_pdf():
 @app.route('/api/compress', methods=['POST'])
 def compress_pdf():
     try:
+        import pikepdf
         data = request.get_json()
         upload_path = data.get('upload_path')
-        quality = data.get('quality', 'medium')  # 'low', 'medium', 'high'
-        
+        quality = data.get('quality', 'medium')
+
         if not upload_path or not os.path.exists(upload_path):
             return jsonify({'error': 'File not found'}), 400
 
@@ -436,71 +437,36 @@ def compress_pdf():
         output_path = os.path.join(OUTPUT_FOLDER, output_filename)
 
         # Quality settings
-        quality_settings = {
-            'low': {
-                'gs_setting': '/screen',
-                'dpi': 72,
-                'description': 'Smallest file, lowest quality (30-50% smaller)'
-            },
-            'medium': {
-                'gs_setting': '/ebook',
-                'dpi': 150,
-                'description': 'Balanced compression (20-30% smaller)'
-            },
-            'high': {
-                'gs_setting': '/printer',
-                'dpi': 200,
-                'description': 'Best quality, minimal compression (10-15% smaller)'
-            }
-        }
-        
-        settings = quality_settings.get(quality, quality_settings['medium'])
+        compress_streams = {'low': 9, 'medium': 6, 'high': 3}
+        level = compress_streams.get(quality, 6)
 
-        try:
-            # Try Ghostscript first
-            import subprocess
-            subprocess.run([
-                'gs', '-sDEVICE=pdfwrite',
-                f'-dPDFSETTINGS={settings["gs_setting"]}',
-                '-dCompressFonts=true',
-                '-dCompressStreams=true',
-                f'-r{settings["dpi"]}',
-                '-dNOPAUSE', '-dQUIET', '-dBATCH',
-                f'-sOutputFile={output_path}',
-                upload_path
-            ], capture_output=True, timeout=20)
-            
-        except:
-            # Fallback: PyPDF2 compression
-            with open(upload_path, 'rb') as f:
-                reader = PyPDF2.PdfReader(f)
-                writer = PyPDF2.PdfWriter()
-                
-                for page in reader.pages:
-                    page.compress_content_streams()
-                    writer.add_page(page)
-                
-                with open(output_path, 'wb') as out_f:
-                    writer.write(out_f)
+        with pikepdf.open(upload_path) as pdf:
+            pdf.save(
+                output_path,
+                compress_streams=True,
+                stream_decode_level=pikepdf.StreamDecodeLevel.generalized,
+                recompress_flate=True,
+                flate_level=level,
+                object_stream_mode=pikepdf.ObjectStreamMode.generate,
+            )
 
         original_size = os.path.getsize(upload_path)
         compressed_size = os.path.getsize(output_path)
         saved = max(0, round((1 - compressed_size / original_size) * 100))
 
         schedule_delete(output_path, 300)
-        
         return jsonify({
             'success': True,
             'output_filename': output_filename,
             'original_size': original_size,
             'compressed_size': compressed_size,
             'saved_percent': saved,
-            'quality_used': quality,
             'download_url': f'/api/download/{output_filename}'
         })
-        
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+        
 
 @app.route('/api/download/<filename>', methods=['GET'])
 def download_file(filename):
