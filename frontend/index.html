@@ -799,7 +799,7 @@
       <div id="convert-drop" class="dropzone" onclick="document.getElementById('convert-input').click()">
         <span class="drop-icon">📂</span>
         <h3>Drag & drop your file here</h3>
-        <p>or <span class="link">click to browse</span> &nbsp;·&nbsp; Max 50MB</p>
+        <p>or <span class="link">click to browse</span> &nbsp;·&nbsp; Max 10MB</p>
       </div>
       <input type="file" id="convert-input" style="display:none"
         accept=".pdf,.docx,.doc,.txt,.jpg,.jpeg,.png,.gif,.webp" multiple />
@@ -819,6 +819,28 @@
       <div id="convert-ops-section" class="hidden">
         <div class="section-label">Choose conversion</div>
         <div class="ops-grid" id="convert-ops-grid"></div>
+        <!-- Quality selector shown only for compress -->
+        <div id="compress-quality-panel" class="hidden"
+          style="background:#13131f;border:1px solid #1e1e35;border-radius:14px;padding:20px;margin-bottom:18px">
+          <div class="section-label" style="margin-bottom:14px">Compression Quality</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+            <div class="op-card selected" id="q-low" onclick="selectQuality('low')">
+              <div class="op-emoji">🗜️</div>
+              <div class="op-name">Low</div>
+              <div class="op-desc">Smallest · 30-50% smaller</div>
+            </div>
+            <div class="op-card" id="q-medium" onclick="selectQuality('medium')">
+              <div class="op-emoji">⚖️</div>
+              <div class="op-name">Medium</div>
+              <div class="op-desc">Balanced · 20-30% smaller</div>
+            </div>
+            <div class="op-card" id="q-high" onclick="selectQuality('high')">
+              <div class="op-emoji">💎</div>
+              <div class="op-name">High</div>
+              <div class="op-desc">Best quality · 10-15% smaller</div>
+            </div>
+          </div>
+        </div>
         <button class="btn btn-primary" id="convert-go-btn" onclick="doConvert()" disabled>🚀 Convert File</button>
       </div>
     </div>
@@ -858,7 +880,7 @@
         <div class="dropzone" id="edit-single-drop" onclick="document.getElementById('edit-single-input').click()">
           <span class="drop-icon">📂</span>
           <h3>Drag & drop your PDF here</h3>
-          <p>or <span class="link">click to browse</span> &nbsp;·&nbsp; PDF only &nbsp;·&nbsp; Max 50MB</p>
+          <p>or <span class="link">click to browse</span> &nbsp;·&nbsp; PDF only &nbsp;·&nbsp; Max 10MB</p>
         </div>
         <input type="file" id="edit-single-input" style="display:none" accept=".pdf" />
         <div id="edit-single-card" class="file-card hidden">
@@ -1190,7 +1212,7 @@
 
     async function handleConvertFile(file) {
       if (!file) return;
-      if (file.size > 50 * 1024 * 1024) { showError('File is too large. Max size is 50MB.'); return; }
+      if (file.size > 10 * 1024 * 1024) { showError('File is too large. Max size is 10MB.'); return; }
       hideError(); hideResult();
       showProgress('Uploading your file...', 'Hang tight!');
       animateProg(10, 65, 900);
@@ -1223,6 +1245,15 @@
       } catch (e) { hideProgress(); showError('Upload failed. Please check your connection and try again.'); }
     }
 
+    let selectedQuality = 'low';
+
+    function selectQuality(q) {
+      selectedQuality = q;
+      ['low', 'medium', 'high'].forEach(v => {
+        document.getElementById('q-' + v).classList.toggle('selected', v === q);
+      });
+    }
+
     function pickConvertOp(op) {
       selectedConvertOp = op.id;
       document.querySelectorAll('#convert-ops-grid .op-card').forEach(c => c.classList.remove('selected'));
@@ -1231,6 +1262,8 @@
       btn.disabled = false;
       btn.textContent = '🚀 ' + op.name;
       btn.onclick = op.id === 'compress_pdf' ? doCompress : doConvert;
+      // Show quality panel only for compress
+      document.getElementById('compress-quality-panel').classList.toggle('hidden', op.id !== 'compress_pdf');
     }
 
     async function doConvert() {
@@ -1250,55 +1283,38 @@
     }
 
     async function doCompress() {
-      let selectedQuality = 'medium';
-
-      function setCompressionQuality(quality) {
-        selectedQuality = quality;
-
-        // Update radio buttons
-        document.querySelectorAll('input[name="quality"]').forEach(r => {
-          r.checked = (r.value === quality);
+      if (!convertUploadInfo) return;
+      hideError(); hideResult();
+      showProgress('Compressing PDF...', 'Reducing file size...');
+      animateProg(5, 85, 2000);
+      try {
+        const r = await fetch(`${API}/compress`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            upload_path: convertUploadInfo.upload_path,
+            quality: selectedQuality  // Send selected quality
+          })
         });
-
-        // Update button styles
-        document.getElementById('quality-low-btn').style.borderColor = quality === 'low' ? '#6c63ff' : '#1e1e35';
-        document.getElementById('quality-medium-btn').style.borderColor = quality === 'medium' ? '#6c63ff' : '#1e1e35';
-        document.getElementById('quality-high-btn').style.borderColor = quality === 'high' ? '#6c63ff' : '#1e1e35';
-      }
-
-      async function doCompress() {
-        if (!convertUploadInfo) return;
-        hideError(); hideResult();
-        showProgress('Compressing PDF...', 'Reducing file size...');
-        animateProg(5, 85, 2000);
-        try {
-          const r = await fetch(`${API}/compress`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              upload_path: convertUploadInfo.upload_path,
-              quality: selectedQuality  // Send selected quality
-            })
-          });
-          const d = await r.json();
-          animateProg(85, 100, 300);
-          setTimeout(() => {
-            hideProgress();
-            if (d.error) {
-              showError(d.error);
-              return;
-            }
-            showResult(d.output_filename);
-            // Show saved size info
-            document.getElementById('result-filename').textContent =
-              `Saved ${d.saved_percent}% — Original: ${(d.original_size / 1048576).toFixed(1)}MB → Compressed: ${(d.compressed_size / 1048576).toFixed(1)}MB`;
-          }, 400);
-        } catch (e) {
+        const d = await r.json();
+        animateProg(85, 100, 300);
+        setTimeout(() => {
           hideProgress();
-          showError('Compression failed. Please try again.');
-        }
+          if (d.error) {
+            showError(d.error);
+            return;
+          }
+          showResult(d.output_filename);
+          // Show saved size info
+          document.getElementById('result-filename').textContent =
+            `Saved ${d.saved_percent}% — Original: ${(d.original_size / 1048576).toFixed(1)}MB → Compressed: ${(d.compressed_size / 1048576).toFixed(1)}MB`;
+        }, 400);
+      } catch (e) {
+        hideProgress();
+        showError('Compression failed. Please try again.');
       }
     }
+
 
     function selectEditOp(op) {
       selectedEditOp = op;
@@ -1313,7 +1329,7 @@
 
     async function handleEditSingleFile(file) {
       if (!file) return;
-      if (file.size > 50 * 1024 * 1024) { showError('File too large. Max 50MB.'); return; }
+      if (file.size > 10 * 1024 * 1024) { showError('File too large. Max 10MB.'); return; }
       hideError();
       showProgress('Uploading PDF...', '');
       animateProg(10, 70, 700);
