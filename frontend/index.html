@@ -802,7 +802,7 @@
       <div id="convert-drop" class="dropzone" onclick="document.getElementById('convert-input').click()">
         <span class="drop-icon">📂</span>
         <h3>Drag & drop your file here</h3>
-        <p>or <span class="link">click to browse</span> &nbsp;·&nbsp; Max 10MB</p>
+        <p>or <span class="link">click to browse</span> &nbsp;·&nbsp; Max 25MB</p>
       </div>
       <input type="file" id="convert-input" style="display:none"
         accept=".pdf,.docx,.doc,.txt,.jpg,.jpeg,.png,.gif,.webp" multiple />
@@ -883,7 +883,7 @@
         <div class="dropzone" id="edit-single-drop" onclick="document.getElementById('edit-single-input').click()">
           <span class="drop-icon">📂</span>
           <h3>Drag & drop your PDF here</h3>
-          <p>or <span class="link">click to browse</span> &nbsp;·&nbsp; PDF only &nbsp;·&nbsp; Max 10MB</p>
+          <p>or <span class="link">click to browse</span> &nbsp;·&nbsp; PDF only &nbsp;·&nbsp; Max 25MB</p>
         </div>
         <input type="file" id="edit-single-input" style="display:none" accept=".pdf" />
         <div id="edit-single-card" class="file-card hidden">
@@ -1037,7 +1037,7 @@
             1</div>
           <h3 style="font-size:1rem;font-weight:700;margin-bottom:8px">Upload Your File</h3>
           <p style="color:#666;font-size:0.85rem;line-height:1.6">Click the upload area or drag and drop your file. We
-            support PDF, Word, JPG, PNG and TXT files up to 50MB.</p>
+            support PDF, Word, JPG, PNG and TXT files up to 25MB.</p>
         </div>
         <div style="background:#13131f;border:1px solid #1e1e35;border-radius:16px;padding:28px 24px">
           <div
@@ -1120,7 +1120,7 @@
           </div>
           <div style="background:#13131f;border:1px solid #1e1e35;border-radius:14px;padding:20px 24px">
             <div style="font-weight:600;font-size:0.9rem;margin-bottom:6px">What is the maximum file size?</div>
-            <div style="color:#666;font-size:0.85rem;line-height:1.6">You can upload files up to 50MB in size.</div>
+            <div style="color:#666;font-size:0.85rem;line-height:1.6">You can upload files up to 25MB in size.</div>
           </div>
           <div style="background:#13131f;border:1px solid #1e1e35;border-radius:14px;padding:20px 24px">
             <div style="font-weight:600;font-size:0.9rem;margin-bottom:6px">What file types are supported?</div>
@@ -1215,7 +1215,7 @@
 
     async function handleConvertFile(file) {
       if (!file) return;
-      if (file.size > 10 * 1024 * 1024) { showError('File is too large. Max size is 10MB.'); return; }
+      if (file.size > 25 * 1024 * 1024) { showError('File is too large. Max size is 25MB.'); return; }
       hideError(); hideResult();
       showProgress('Uploading your file...', 'Hang tight!');
       animateProg(10, 65, 900);
@@ -1332,7 +1332,7 @@
 
     async function handleEditSingleFile(file) {
       if (!file) return;
-      if (file.size > 10 * 1024 * 1024) { showError('File too large. Max 10MB.'); return; }
+      if (file.size > 25 * 1024 * 1024) { showError('File too large. Max 25MB.'); return; }
       hideError();
       showProgress('Uploading PDF...', '');
       animateProg(10, 70, 700);

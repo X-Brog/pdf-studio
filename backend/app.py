@@ -23,7 +23,7 @@ CORS(app, origins=["https://pdf-studio-tau.vercel.app"])
 
 UPLOAD_FOLDER = '/tmp/pdf_studio_uploads'
 OUTPUT_FOLDER = '/tmp/pdf_studio_outputs'
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
@@ -421,10 +421,12 @@ def add_text_to_pdf():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
 @app.route('/api/compress', methods=['POST'])
 def compress_pdf():
     try:
         import pikepdf
+        import gc
         from PIL import Image as PILImage
         import io
 
@@ -435,42 +437,61 @@ def compress_pdf():
         if not upload_path or not os.path.exists(upload_path):
             return jsonify({'error': 'File not found'}), 400
 
+        # Check file size before processing
+        file_size = os.path.getsize(upload_path)
+        if file_size > 25 * 1024 * 1024:
+            return jsonify({'error': 'File too large for compression. Max 25MB.'}), 400
+
         output_filename = f"compressed_{uuid.uuid4().hex[:8]}.pdf"
         output_path = os.path.join(OUTPUT_FOLDER, output_filename)
 
-        # Quality = image compression level
         img_quality = {'low': 30, 'medium': 60, 'high': 85}.get(quality, 60)
         max_dpi = {'low': 72, 'medium': 120, 'high': 150}.get(quality, 120)
 
         with pikepdf.open(upload_path) as pdf:
-            for page in pdf.pages:
-                if '/Resources' not in page:
-                    continue
-                resources = page['/Resources']
-                if '/XObject' not in resources:
-                    continue
-                xobjects = resources['/XObject']
-                for key in list(xobjects.keys()):
-                    xobj = xobjects[key]
-                    if xobj.get('/Subtype') == '/Image':
-                        try:
-                            raw = xobj.read_raw_bytes()
-                            img = PILImage.open(io.BytesIO(raw)).convert('RGB')
-                            w, h = img.size
-                            scale = min(1.0, max_dpi / max(72, w/8.27, h/11.69))
-                            if scale < 1.0:
-                                img = img.resize(
-                                    (int(w*scale), int(h*scale)),
-                                    PILImage.LANCZOS
-                                )
-                            buf = io.BytesIO()
-                            img.save(buf, format='JPEG', quality=img_quality, optimize=True)
-                            buf.seek(0)
-                            xobj.write(buf.read(), filter=pikepdf.Name('/DCTDecode'))
-                            xobj['/ColorSpace'] = pikepdf.Name('/DeviceRGB')
-                            xobj['/BitsPerComponent'] = 8
-                        except:
-                            pass
+            for i, page in enumerate(pdf.pages):
+                try:
+                    if '/Resources' not in page:
+                        continue
+                    resources = page['/Resources']
+                    if '/XObject' not in resources:
+                        continue
+                    xobjects = resources['/XObject']
+                    for key in list(xobjects.keys()):
+                        xobj = xobjects[key]
+                        if xobj.get('/Subtype') == '/Image':
+                            try:
+                                raw = xobj.read_raw_bytes()
+                                img = PILImage.open(io.BytesIO(raw)).convert('RGB')
+                                w, h = img.size
+                                scale = min(1.0, max_dpi / max(72, w/8.27, h/11.69))
+                                if scale < 1.0:
+                                    img = img.resize(
+                                        (int(w*scale), int(h*scale)),
+                                        PILImage.LANCZOS
+                                    )
+                                buf = io.BytesIO()
+                                img.save(buf, format='JPEG', quality=img_quality, optimize=True)
+                                buf.seek(0)
+                                xobj.write(buf.read(), filter=pikepdf.Name('/DCTDecode'))
+                                xobj['/ColorSpace'] = pikepdf.Name('/DeviceRGB')
+                                xobj['/BitsPerComponent'] = 8
+                                # Free memory immediately
+                                del img, buf, raw
+                            except:
+                                pass
+                except:
+                    pass
+                # Force garbage collection every 10 pages
+                if i % 10 == 0:
+                    gc.collect()
+
+            # Remove metadata
+            try:
+                with pdf.open_metadata() as meta:
+                    meta.clear()
+            except:
+                pass
 
             pdf.save(
                 output_path,
@@ -478,6 +499,7 @@ def compress_pdf():
                 object_stream_mode=pikepdf.ObjectStreamMode.generate,
             )
 
+        gc.collect()
         original_size = os.path.getsize(upload_path)
         compressed_size = os.path.getsize(output_path)
         saved = max(0, round((1 - compressed_size / original_size) * 100))
@@ -493,8 +515,11 @@ def compress_pdf():
             'download_url': f'/api/download/{output_filename}'
         })
 
+    except MemoryError:
+        gc.collect()
+        return jsonify({'error': 'File too large to process. Try a smaller file.'}), 500
     except Exception as e:
-        return jsonify({'error': str(e)}), 500  
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/download/<filename>', methods=['GET'])
