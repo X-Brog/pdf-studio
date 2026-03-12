@@ -23,7 +23,7 @@ CORS(app, origins=["https://pdf-studio-tau.vercel.app"])
 
 UPLOAD_FOLDER = '/tmp/pdf_studio_uploads'
 OUTPUT_FOLDER = '/tmp/pdf_studio_outputs'
-MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
@@ -71,20 +71,20 @@ def upload_file():
         return jsonify({'error': 'File type not allowed'}), 400
 
     filename = secure_filename(file.filename)
+    ext = filename.rsplit('.', 1)[1].lower()
+
     uid = str(uuid.uuid4())
-    upload_path = os.path.join(UPLOAD_FOLDER, f"{uid}_{filename}")
+    upload_path = os.path.join(UPLOAD_FOLDER, f"{uid}.{ext}")
+
     file.save(upload_path)
 
-    # Get file info
     size = os.path.getsize(upload_path)
-    ext = filename.rsplit('.', 1)[1].lower()
 
     page_count = None
     if ext == 'pdf':
         try:
-            with open(upload_path, 'rb') as f:
-                reader = PyPDF2.PdfReader(f)
-                page_count = len(reader.pages)
+            reader = PyPDF2.PdfReader(upload_path, strict=False)
+            page_count = len(reader.pages)
         except:
             pass
 
@@ -96,7 +96,7 @@ def upload_file():
         'size': size,
         'extension': ext,
         'page_count': page_count,
-        'upload_path': upload_path
+        'upload_path': upload_path 
     })
 
 @app.route('/api/convert', methods=['POST'])
@@ -427,42 +427,80 @@ def compress_pdf():
     try:
         data = request.get_json()
         upload_path = data.get('upload_path')
-        quality = data.get('quality', 'medium')  # low, medium, high
+        quality = data.get('quality', 'medium')  # 'low', 'medium', 'high'
         
         if not upload_path or not os.path.exists(upload_path):
             return jsonify({'error': 'File not found'}), 400
 
-        # Fix: Use PyPDF2.PdfReader instead of PdfReader
-        with open(upload_path, 'rb') as f:
-            reader = PyPDF2.PdfReader(f)
-            writer = PyPDF2.PdfWriter()
-
-            for page in reader.pages:
-                # Compress content streams
-                page.compress_content_streams()
-                writer.add_page(page)
-
         output_filename = f"compressed_{uuid.uuid4().hex[:8]}.pdf"
         output_path = os.path.join(OUTPUT_FOLDER, output_filename)
 
-        with open(output_path, 'wb') as f:
-            writer.write(f)
+        # Quality settings
+        quality_settings = {
+            'low': {
+                'gs_setting': '/screen',
+                'dpi': 72,
+                'description': 'Smallest file, lowest quality (30-50% smaller)'
+            },
+            'medium': {
+                'gs_setting': '/ebook',
+                'dpi': 150,
+                'description': 'Balanced compression (20-30% smaller)'
+            },
+            'high': {
+                'gs_setting': '/printer',
+                'dpi': 200,
+                'description': 'Best quality, minimal compression (10-15% smaller)'
+            }
+        }
+        
+        settings = quality_settings.get(quality, quality_settings['medium'])
+
+        try:
+            # Try Ghostscript first
+            import subprocess
+            subprocess.run([
+                'gs', '-sDEVICE=pdfwrite',
+                f'-dPDFSETTINGS={settings["gs_setting"]}',
+                '-dCompressFonts=true',
+                '-dCompressStreams=true',
+                f'-r{settings["dpi"]}',
+                '-dNOPAUSE', '-dQUIET', '-dBATCH',
+                f'-sOutputFile={output_path}',
+                upload_path
+            ], capture_output=True, timeout=20)
+            
+        except:
+            # Fallback: PyPDF2 compression
+            with open(upload_path, 'rb') as f:
+                reader = PyPDF2.PdfReader(f)
+                writer = PyPDF2.PdfWriter()
+                
+                for page in reader.pages:
+                    page.compress_content_streams()
+                    writer.add_page(page)
+                
+                with open(output_path, 'wb') as out_f:
+                    writer.write(out_f)
 
         original_size = os.path.getsize(upload_path)
         compressed_size = os.path.getsize(output_path)
-        saved = max(0, round((1 - compressed_size/original_size) * 100))
+        saved = max(0, round((1 - compressed_size / original_size) * 100))
 
         schedule_delete(output_path, 300)
+        
         return jsonify({
             'success': True,
             'output_filename': output_filename,
             'original_size': original_size,
             'compressed_size': compressed_size,
             'saved_percent': saved,
+            'quality_used': quality,
             'download_url': f'/api/download/{output_filename}'
         })
+        
     except Exception as e:
-        return jsonify({'error': str(e)}), 500 
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/download/<filename>', methods=['GET'])
 def download_file(filename):

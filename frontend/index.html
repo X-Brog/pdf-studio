@@ -847,6 +847,11 @@
           <div class="op-name">Add Text</div>
           <div class="op-desc">Overlay text on page</div>
         </div>
+        <div class="op-card" id="editop-compress" onclick="selectEditOp('compress')">
+          <div class="op-emoji">🗜️</div>
+          <div class="op-name">Compress PDF</div>
+          <div class="op-desc">Reduce file size</div>
+        </div>
       </div>
 
       <div id="edit-single-wrap" class="hidden">
@@ -913,6 +918,50 @@
         </div>
         <p id="delete-preview" style="color:#666;font-size:0.8rem;margin-bottom:16px"></p>
         <button class="btn btn-red" onclick="doDeletePages()">🗑️ Delete Pages</button>
+      </div>
+
+      <!-- COMPRESS PDF PANEL -->
+      <div id="panel-compress" class="edit-panel hidden">
+        <h3>🗜️ Compress PDF</h3>
+
+        <div class="form-group">
+          <label>Select Compression Quality:</label>
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px;">
+            <!-- LOW QUALITY -->
+            <div
+              style="padding: 15px; background: #13131f; border: 2px solid #1e1e35; border-radius: 10px; text-align: center; cursor: pointer; transition: all 0.2s;"
+              id="quality-low-btn" onclick="setCompressionQuality('low')">
+              <input type="radio" name="quality" value="low" style="margin-right: 6px;">
+              <strong style="display: block; margin: 8px 0 4px 0;">🏃 Low</strong>
+              <p style="font-size: 0.75rem; color: #888; margin: 0; line-height: 1.4;">Smallest file<br><strong
+                  style="color: #43e97b;">30-50% smaller</strong></p>
+            </div>
+
+            <!-- MEDIUM QUALITY (DEFAULT) -->
+            <div
+              style="padding: 15px; background: #13131f; border: 2px solid #6c63ff; border-radius: 10px; text-align: center; cursor: pointer; transition: all 0.2s; box-shadow: 0 0 15px rgba(108, 99, 255, 0.3);"
+              id="quality-medium-btn" onclick="setCompressionQuality('medium')">
+              <input type="radio" name="quality" value="medium" checked style="margin-right: 6px;">
+              <strong style="display: block; margin: 8px 0 4px 0;">⚡ Medium</strong>
+              <p style="font-size: 0.75rem; color: #888; margin: 0; line-height: 1.4;">Balanced<br><strong
+                  style="color: #43e97b;">20-30% smaller</strong></p>
+            </div>
+
+            <!-- HIGH QUALITY -->
+            <div
+              style="padding: 15px; background: #13131f; border: 2px solid #1e1e35; border-radius: 10px; text-align: center; cursor: pointer; transition: all 0.2s;"
+              id="quality-high-btn" onclick="setCompressionQuality('high')">
+              <input type="radio" name="quality" value="high" style="margin-right: 6px;">
+              <strong style="display: block; margin: 8px 0 4px 0;">👑 High</strong>
+              <p style="font-size: 0.75rem; color: #888; margin: 0; line-height: 1.4;">Best quality<br><strong
+                  style="color: #43e97b;">10-15% smaller</strong></p>
+            </div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" style="width: 100%;">
+          🗜️ Compress PDF
+        </button>
       </div>
 
       <div id="panel-add_text" class="edit-panel hidden">
@@ -1201,38 +1250,64 @@
     }
 
     async function doCompress() {
-      if (!convertUploadInfo) return;
-      hideError(); hideResult();
-      showProgress('Compressing PDF...', 'Reducing file size...');
-      animateProg(5, 85, 2000);
-      try {
-        const r = await fetch(`${API}/compress`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            upload_path: convertUploadInfo.upload_path,
-            quality: 'medium'
-          })
+      let selectedQuality = 'medium';
+
+      function setCompressionQuality(quality) {
+        selectedQuality = quality;
+
+        // Update radio buttons
+        document.querySelectorAll('input[name="quality"]').forEach(r => {
+          r.checked = (r.value === quality);
         });
-        const d = await r.json();
-        animateProg(85, 100, 300);
-        setTimeout(() => {
+
+        // Update button styles
+        document.getElementById('quality-low-btn').style.borderColor = quality === 'low' ? '#6c63ff' : '#1e1e35';
+        document.getElementById('quality-medium-btn').style.borderColor = quality === 'medium' ? '#6c63ff' : '#1e1e35';
+        document.getElementById('quality-high-btn').style.borderColor = quality === 'high' ? '#6c63ff' : '#1e1e35';
+      }
+
+      async function doCompress() {
+        if (!convertUploadInfo) return;
+        hideError(); hideResult();
+        showProgress('Compressing PDF...', 'Reducing file size...');
+        animateProg(5, 85, 2000);
+        try {
+          const r = await fetch(`${API}/compress`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              upload_path: convertUploadInfo.upload_path,
+              quality: selectedQuality  // Send selected quality
+            })
+          });
+          const d = await r.json();
+          animateProg(85, 100, 300);
+          setTimeout(() => {
+            hideProgress();
+            if (d.error) {
+              showError(d.error);
+              return;
+            }
+            showResult(d.output_filename);
+            // Show saved size info
+            document.getElementById('result-filename').textContent =
+              `Saved ${d.saved_percent}% — Original: ${(d.original_size / 1048576).toFixed(1)}MB → Compressed: ${(d.compressed_size / 1048576).toFixed(1)}MB`;
+          }, 400);
+        } catch (e) {
           hideProgress();
-          if (d.error) { showError(d.error); return; }
-          showResult(d.output_filename);
-          // Show saved size info
-          document.getElementById('result-filename').textContent =
-            `Saved ${d.saved_percent}% — ${(d.compressed_size / 1048576).toFixed(1)}MB`;
-        }, 400);
-      } catch (e) { hideProgress(); showError('Compression failed. Please try again.'); }
+          showError('Compression failed. Please try again.');
+        }
+      }
     }
 
     function selectEditOp(op) {
       selectedEditOp = op;
-      ['merge', 'split', 'delete_pages', 'add_text'].forEach(o => {
-        document.getElementById('editop-' + o).classList.toggle('selected', o === op);
-        document.getElementById('panel-' + o).classList.toggle('hidden', o !== op);
+      // Update which panels show
+      ['merge', 'split', 'delete_pages', 'add_text', 'compress'].forEach(o => {
+        document.getElementById('editop-' + o)?.classList.toggle('selected', o === op);
+        document.getElementById('panel-' + o)?.classList.toggle('hidden', o !== op);
       });
-      document.getElementById('edit-single-wrap').classList.toggle('hidden', !['split', 'delete_pages', 'add_text'].includes(op));
+      document.getElementById('edit-single-wrap').classList.toggle('hidden', !['split', 'delete_pages', 'add_text', 'compress'].includes(op));
       hideError(); hideResult();
     }
 
